@@ -13,7 +13,7 @@ st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석"
 st.markdown("기술 설명 텍스트를 기반으로 각 기술 간의 연관성과 클러스터를 시각화합니다.")
 
 # 1. 데이터 업로드
-uploaded_file = st.file_uploader("CSV 파일 업로드", type="csv")
+uploaded_file = st.file_uploader("한국기계연구원_나노융합기술100선_20230731.csv", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
