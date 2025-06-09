@@ -1,104 +1,116 @@
 # streamlit_app.py
 
-import streamlit as st
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import networkx as nx
-import plotly.graph_objects as go
+import plotly.express as px
+import streamlit as st
+from datetime import datetime
 
-st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wide")
+# ----------------------
+# 1. 데이터 로딩 및 전처리
+# ----------------------
+@st.cache_data
+def load_data():
+    try:
+        df = pd.read_csv("소득5분위별_가구당_가계수지__전국_1인이상_실질__20250605122557.csv", encoding='utf-8-sig')
+        st.success("✅ UTF-8-SIG로 읽기 성공")
+    except:
+        try:
+            df = pd.read_csv("소득5분위별_가구당_가계수지__전국_1인이상_실질__20250605122557.csv", encoding='cp949')
+            st.success("✅ CP949로 읽기 성공")
+        except:
+            st.error("❌ CSV 파일을 불러오지 못했습니다.")
+            return pd.DataFrame()
 
-st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
-st.markdown("기술 설명 텍스트를 기반으로 각 기술 간의 연관성과 클러스터를 시각화합니다.")
+    # 데이터 확인용 출력
+    st.write("📊 원본 데이터 (상위 5행):")
+    st.write(df.head(5))
 
-# 1. 데이터 업로드
-uploaded_file = st.file_uploader("한국기계연구원_나노융합기술100선_20230731.csv", type="csv")
+    # 불필요한 첫 행 제거 (중복 헤더 가능성)
+    if df.iloc[0].str.contains("1분위").any():
+        df = df.drop([0])
+        df.reset_index(drop=True, inplace=True)
 
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
+    # 컬럼 정리
+    df = df.rename(columns={df.columns[0]: "소득분위", df.columns[1]: "항목"})
+    df = df[df["소득분위"].isin(['1분위', '2분위', '3분위', '4분위', '5분위'])]
+    df = df.dropna(axis=1, how='any')
 
-    # 2. 기술 설명 컬럼 확인
-    text_col = st.selectbox("기술 설명 텍스트 컬럼을 선택하세요", df.columns)
+    # 열 이름 정제
+    time_cols = df.columns[2:]
+    new_cols = []
+    for col in time_cols:
+        try:
+            year, quarter = col.split("/")
+            new_cols.append(f"{year}Q{quarter}")
+        except:
+            new_cols.append(col)
+    df.columns = list(df.columns[:2]) + new_cols
 
-    # 3. TF-IDF 벡터화
-    tfidf = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = tfidf.fit_transform(df[text_col].fillna(""))
+    return df
 
-    # 4. 코사인 유사도 계산
-    similarity_matrix = cosine_similarity(tfidf_matrix)
+# ----------------------
+# 2. 앱 레이아웃 설정
+# ----------------------
+st.set_page_config(page_title="소득 분위별 소비 분석", layout="wide")
+st.title("💸 소득 5분위별 소비 패턴 변화 분석")
 
-    # 5. 네트워크 그래프 생성
-    threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.3, 0.05)
-    G = nx.Graph()
+st.markdown("""
+**분석 목표**: 물가 상승률(CPI)과 함께, 소득 5분위별 실질 소비 항목 변화를 비교하고 인플레이션의 영향을 분석합니다.
+""")
 
-    for i in range(len(df)):
-        G.add_node(i, label=df.iloc[i][text_col][:20] + "...")
+# ----------------------
+# 3. 데이터 불러오기 및 선택 옵션
+# ----------------------
+df = load_data()
 
-    for i in range(len(df)):
-        for j in range(i + 1, len(df)):
-            if similarity_matrix[i, j] > threshold:
-                G.add_edge(i, j, weight=similarity_matrix[i, j])
+if df.empty:
+    st.stop()
 
-    pos = nx.spring_layout(G, seed=42)
+소득분위_list = df['소득분위'].unique().tolist()
+항목_list = df['항목'].unique().tolist()
 
-    # 6. Plotly 그래프 시각화
-    edge_x = []
-    edge_y = []
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
+st.write("📌 소득분위 목록:", 소득분위_list)
+st.write("📌 항목 목록:", 항목_list)
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=0.5, color='#888'),
-        hoverinfo='none',
-        mode='lines'
-    )
+col1, col2 = st.columns(2)
+with col1:
+    selected_소득분위 = st.selectbox("소득 분위 선택", 소득분위_list)
+with col2:
+    기본값_후보 = ['소비지출', '식료품·비주류음료', '교통']
+    유효한_기본값 = [항목 for 항목 in 기본값_후보 if 항목 in 항목_list]
+    selected_항목 = st.multiselect("소비 항목 선택", 항목_list, default=유효한_기본값)
 
-    node_x = []
-    node_y = []
-    labels = []
-    for node in G.nodes():
-        x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        labels.append(G.nodes[node]['label'])
+# ----------------------
+# 4. 데이터 가공
+# ----------------------
+filtered_df = df[(df['소득분위'] == selected_소득분위) & (df['항목'].isin(selected_항목))]
 
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=labels,
-        textposition="top center",
-        hoverinfo='text',
-        marker=dict(
-            showscale=True,
-            colorscale='YlGnBu',
-            color=[len(list(G.neighbors(n))) for n in G.nodes()],
-            size=12,
-            colorbar=dict(
-                thickness=15,
-                title='연결된 기술 수',
-                xanchor='left',
-                titleside='right'
-            )
-        )
-    )
+df_melted = filtered_df.melt(id_vars=['소득분위', '항목'], var_name='시점', value_name='지출')
+df_melted['시점'] = pd.PeriodIndex(df_melted['시점'], freq='Q').to_timestamp()
+df_melted['지출'] = pd.to_numeric(df_melted['지출'], errors='coerce')
 
-    fig = go.Figure(data=[edge_trace, node_trace],
-                    layout=go.Layout(
-                        title='기술 간 유사도 네트워크',
-                        titlefont_size=20,
-                        showlegend=False,
-                        hovermode='closest',
-                        margin=dict(b=20,l=5,r=5,t=40),
-                        xaxis=dict(showgrid=False, zeroline=False),
-                        yaxis=dict(showgrid=False, zeroline=False)
-                    ))
+# ----------------------
+# 5. 시각화
+# ----------------------
+fig = px.line(
+    df_melted,
+    x='시점',
+    y='지출',
+    color='항목',
+    markers=True,
+    title=f"{selected_소득분위} 소비 항목별 변화 추이",
+    labels={'지출': '지출 금액(원)', '시점': '분기'}
+)
+fig.update_layout(legend_title="소비 항목", height=500)
+st.plotly_chart(fig, use_container_width=True)
 
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.success("분석 완료! 유사도가 높은 기술들끼리 연결되어 있습니다.")
+# ----------------------
+# 6. 인사이트 요약
+# ----------------------
+st.subheader("🔍 분석 인사이트")
+st.markdown("""
+- 소득이 낮을수록 필수 지출 항목(식료품, 주거비)의 비중이 상대적으로 높게 유지됩니다.
+- 상위 분위는 문화, 교육, 보건 분야의 소비 증감이 뚜렷하게 나타날 수 있습니다.
+- 분기별로 CPI와 병합하여 추가 분석할 수 있습니다.
+""")
 
