@@ -10,7 +10,7 @@ st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wid
 st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
 st.markdown("기술 설명 텍스트를 기반으로 기술 간의 연관성과 클러스터를 시각화합니다.")
 
-# 👉 GitHub의 raw CSV 파일 경로 (파일명 변경 반영)
+# 👉 GitHub의 raw CSV 파일 경로
 csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
 
 # CSV 불러오기
@@ -21,7 +21,7 @@ except:
     st.error("❌ CSV 파일을 불러오는 데 실패했습니다. URL 경로를 확인해주세요.")
     st.stop()
 
-# 사용자에게 설명 컬럼 선택하도록
+# 사용자에게 설명 컬럼 선택
 text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
 
 # TF-IDF 벡터화
@@ -45,7 +45,6 @@ for i in range(len(df)):
         if similarity_matrix[i, j] > threshold:
             G.add_edge(i, j, weight=similarity_matrix[i, j])
 
-# 연결된 노드가 없으면 경고
 if len(G.edges) == 0:
     st.warning("⚠️ 현재 유사도 임계값에서는 연결된 기술이 없습니다. 임계값을 낮춰보세요.")
     st.stop()
@@ -96,7 +95,7 @@ node_trace = go.Scatter(
         size=12,
         colorbar=dict(
             thickness=15,
-            title=dict(text='연결된 기술 수'),
+            title='연결된 기술 수',  # ← 여기만 문자열로 고침!
             xanchor='left',
             titleside='right'
         )
