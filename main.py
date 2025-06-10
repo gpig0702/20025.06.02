@@ -36,12 +36,19 @@ threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.
 G = nx.Graph()
 
 for i in range(len(df)):
-    G.add_node(i, label=df.iloc[i][text_col][:25] + "...")
+    label_text = str(df.iloc[i][text_col])
+    short_label = label_text[:25] + "..." if len(label_text) > 25 else label_text
+    G.add_node(i, label=short_label)
 
 for i in range(len(df)):
     for j in range(i + 1, len(df)):
         if similarity_matrix[i, j] > threshold:
             G.add_edge(i, j, weight=similarity_matrix[i, j])
+
+# 연결된 노드가 없으면 경고
+if len(G.edges) == 0:
+    st.warning("⚠️ 현재 유사도 임계값에서는 연결된 기술이 없습니다. 임계값을 낮춰보세요.")
+    st.stop()
 
 # 위치 계산
 pos = nx.spring_layout(G, seed=42)
@@ -73,10 +80,7 @@ for node in G.nodes():
     node_x.append(x)
     node_y.append(y)
     labels.append(G.nodes[node]['label'])
-    try:
-        degree = len(list(G.neighbors(node)))
-    except:
-        degree = 0
+    degree = len(list(G.neighbors(node)))
     node_degrees.append(degree)
 
 node_trace = go.Scatter(
@@ -88,11 +92,11 @@ node_trace = go.Scatter(
     marker=dict(
         showscale=True,
         colorscale='YlGnBu',
-        color=node_degrees,  # 연결 수로 색상 설정
+        color=node_degrees,
         size=12,
         colorbar=dict(
             thickness=15,
-            title='연결된 기술 수',
+            title=dict(text='연결된 기술 수'),
             xanchor='left',
             titleside='right'
         )
