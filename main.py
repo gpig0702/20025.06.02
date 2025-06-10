@@ -10,8 +10,10 @@ st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wid
 st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
 st.markdown("기술 설명 텍스트를 기반으로 기술 간의 연관성과 클러스터를 시각화합니다.")
 
-# CSV 파일 GitHub에서 불러오기
-csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/한국기계연구원_나노융합기술100선_20230731.csv"
+# 👉 변경된 파일명 반영된 GitHub raw URL
+csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
+
+# CSV 불러오기
 try:
     df = pd.read_csv(csv_url)
     st.success("📂 CSV 파일을 성공적으로 불러왔습니다.")
@@ -19,17 +21,17 @@ except:
     st.error("❌ CSV 파일을 불러오는 데 실패했습니다. URL 경로를 확인해주세요.")
     st.stop()
 
-# 기술 설명 텍스트 컬럼 선택
+# 사용자에게 설명 컬럼 선택하도록
 text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
 
-# TF-IDF 벡터화
+# TF-IDF 기반 벡터화
 tfidf = TfidfVectorizer(stop_words='english')
 tfidf_matrix = tfidf.fit_transform(df[text_col].fillna(""))
 
-# 코사인 유사도 계산
+# 코사인 유사도 행렬
 similarity_matrix = cosine_similarity(tfidf_matrix)
 
-# 네트워크 그래프 생성
+# 유사도 기반 네트워크 생성
 threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.3, 0.05)
 G = nx.Graph()
 
@@ -41,9 +43,10 @@ for i in range(len(df)):
         if similarity_matrix[i, j] > threshold:
             G.add_edge(i, j, weight=similarity_matrix[i, j])
 
+# 위치 계산
 pos = nx.spring_layout(G, seed=42)
 
-# Plotly를 이용한 시각화
+# Plotly 시각화 구성
 edge_x = []
 edge_y = []
 for edge in G.edges():
