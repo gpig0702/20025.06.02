@@ -10,15 +10,18 @@ st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wid
 st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
 st.markdown("기술 설명 텍스트를 기반으로 기술 간의 연관성과 클러스터를 시각화합니다.")
 
-# 👉 GitHub의 raw CSV 파일 경로
-csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
+# 파일 업로드
+uploaded_file = st.file_uploader("📁 CSV 파일 업로드", type=["csv"])
+if uploaded_file is None:
+    st.warning("CSV 파일을 업로드해주세요.")
+    st.stop()
 
 # CSV 불러오기
 try:
-    df = pd.read_csv(csv_url)
-    st.success("📂 CSV 파일을 성공적으로 불러왔습니다.")
-except:
-    st.error("❌ CSV 파일을 불러오는 데 실패했습니다. URL 경로를 확인해주세요.")
+    df = pd.read_csv(uploaded_file)
+    st.success("✅ CSV 파일을 성공적으로 불러왔습니다.")
+except Exception as e:
+    st.error(f"❌ CSV 파일을 불러오는 데 실패했습니다.\n\n{e}")
     st.stop()
 
 # 사용자에게 설명 컬럼 선택하도록
@@ -35,9 +38,11 @@ similarity_matrix = cosine_similarity(tfidf_matrix)
 threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.3, 0.05)
 G = nx.Graph()
 
+# 노드 추가
 for i in range(len(df)):
     G.add_node(i, label=df.iloc[i][text_col][:25] + "...")
 
+# 유사도가 임계값 이상이면 간선 추가
 for i in range(len(df)):
     for j in range(i + 1, len(df)):
         if similarity_matrix[i, j] > threshold:
@@ -46,7 +51,7 @@ for i in range(len(df)):
 # 위치 계산
 pos = nx.spring_layout(G, seed=42)
 
-# Edge 좌표
+# 간선 좌표 계산
 edge_x = []
 edge_y = []
 for edge in G.edges():
@@ -62,7 +67,7 @@ edge_trace = go.Scatter(
     mode='lines'
 )
 
-# Node 좌표 및 연결 수 계산
+# 노드 좌표 및 정보 계산
 node_x = []
 node_y = []
 labels = []
@@ -89,7 +94,7 @@ node_trace = go.Scatter(
         size=12,
         colorbar=dict(
             thickness=15,
-            title=dict(text='연결된 기술 수'),  # ← 여기 수정
+            title=dict(text='연결된 기술 수'),  # ✅ 수정된 부분
             xanchor='left',
             titleside='right'
         )
@@ -110,5 +115,6 @@ fig = go.Figure(data=[edge_trace, node_trace],
 
 st.plotly_chart(fig, use_container_width=True)
 
+# 추가 설명
 st.markdown("---")
 st.info("기술 간 유사도가 높은 경우 더 많은 연결선이 보입니다. 유사도 임계값을 조정해보세요!")
