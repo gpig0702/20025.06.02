@@ -5,113 +5,97 @@ from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
 import plotly.graph_objects as go
 
-# 페이지 설정
-st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wide")
-st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
-st.markdown("기술 설명 텍스트를 기반으로 기술 간의 연관성과 클러스터를 시각화합니다.")
+st.title("기술 유사도 네트워크 시각화")
 
-# 👉 GitHub의 raw CSV 파일 경로 (파일명 변경 반영)
-csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
+# 파일 업로드
+uploaded_file = st.file_uploader("CSV 파일을 업로드하세요", type=["csv"])
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.write("데이터 미리보기", df.head())
 
-# CSV 불러오기
-try:
-    df = pd.read_csv(csv_url)
-    st.success("📂 CSV 파일을 성공적으로 불러왔습니다.")
-except:
-    st.error("❌ CSV 파일을 불러오는 데 실패했습니다. URL 경로를 확인해주세요.")
-    st.stop()
+    # 텍스트 컬럼 선택
+    text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
 
-# 사용자에게 설명 컬럼 선택하도록
-text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
+    if st.button("시각화 시작"):
+        with st.spinner("처리 중..."):
+            texts = df[text_col].fillna("").astype(str).tolist()
 
-# TF-IDF 벡터화
-tfidf = TfidfVectorizer(stop_words='english')
-tfidf_matrix = tfidf.fit_transform(df[text_col].fillna(""))
+            if not any(texts):
+                st.error("선택한 컬럼에 유효한 텍스트가 없습니다.")
+                st.stop()
 
-# 코사인 유사도 계산
-similarity_matrix = cosine_similarity(tfidf_matrix)
+            vectorizer = TfidfVectorizer()
+            tfidf_matrix = vectorizer.fit_transform(texts)
 
-# 네트워크 생성
-threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.3, 0.05)
-G = nx.Graph()
+            similarity_matrix = cosine_similarity(tfidf_matrix)
 
-for i in range(len(df)):
-    G.add_node(i, label=df.iloc[i][text_col][:25] + "...")
+            threshold = st.slider("유사도 임계값", 0.0, 1.0, 0.3, 0.05)
 
-for i in range(len(df)):
-    for j in range(i + 1, len(df)):
-        if similarity_matrix[i, j] > threshold:
-            G.add_edge(i, j, weight=similarity_matrix[i, j])
+            G = nx.Graph()
+            for i in range(len(texts)):
+                G.add_node(i, label=texts[i])
+            for i in range(len(texts)):
+                for j in range(i + 1, len(texts)):
+                    if similarity_matrix[i, j] > threshold:
+                        G.add_edge(i, j, weight=similarity_matrix[i, j])
 
-# 위치 계산
-pos = nx.spring_layout(G, seed=42)
+            if len(G.nodes) == 0:
+                st.warning("노드가 없습니다. 컬럼이나 임계값을 다시 확인해주세요.")
+                st.stop()
 
-# Edge 좌표
-edge_x = []
-edge_y = []
-for edge in G.edges():
-    x0, y0 = pos[edge[0]]
-    x1, y1 = pos[edge[1]]
-    edge_x += [x0, x1, None]
-    edge_y += [y0, y1, None]
+            if len(G.edges) == 0:
+                st.warning("간선이 없습니다. 임계값을 낮춰보세요.")
+                st.stop()
 
-edge_trace = go.Scatter(
-    x=edge_x, y=edge_y,
-    line=dict(width=0.5, color='#888'),
-    hoverinfo='none',
-    mode='lines'
-)
+            pos = nx.spring_layout(G, seed=42)
 
-# Node 좌표 및 연결 수 계산
-node_x = []
-node_y = []
-labels = []
-node_degrees = []
+            edge_x = []
+            edge_y = []
+            for edge in G.edges():
+                x0, y0 = pos[edge[0]]
+                x1, y1 = pos[edge[1]]
+                edge_x += [x0, x1, None]
+                edge_y += [y0, y1, None]
 
-for node in G.nodes():
-    x, y = pos[node]
-    node_x.append(x)
-    node_y.append(y)
-    labels.append(G.nodes[node]['label'])
-    try:
-        degree = len(list(G.neighbors(node)))
-    except:
-        degree = 0
-    node_degrees.append(degree)
+            edge_trace = go.Scatter(
+                x=edge_x,
+                y=edge_y,
+                line=dict(width=0.5, color="#888"),
+                hoverinfo="none",
+                mode="lines"
+            )
 
-node_trace = go.Scatter(
-    x=node_x, y=node_y,
-    mode='markers+text',
-    text=labels,
-    textposition="top center",
-    hoverinfo='text',
-    marker=dict(
-        showscale=True,
-        colorscale='YlGnBu',
-        color=node_degrees,  # 연결 수로 색상 설정
-        size=12,
-        colorbar=dict(
-            thickness=15,
-            title='연결된 기술 수',
-            xanchor='left',
-            titleside='right'
-        )
-    )
-)
+            node_x = []
+            node_y = []
+            for node in G.nodes():
+                x, y = pos[node]
+                node_x.append(x)
+                node_y.append(y)
 
-# 그래프 시각화
-fig = go.Figure(data=[edge_trace, node_trace],
-                layout=go.Layout(
-                    title='기술 간 유사도 네트워크',
-                    titlefont_size=20,
-                    showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20, l=5, r=5, t=40),
-                    xaxis=dict(showgrid=False, zeroline=False),
-                    yaxis=dict(showgrid=False, zeroline=False)
-                ))
+            node_trace = go.Scatter(
+                x=node_x,
+                y=node_y,
+                mode="markers+text",
+                hoverinfo="text",
+                textposition="top center",
+                marker=dict(
+                    showscale=False,
+                    size=10,
+                    color="#FF5733",
+                    line_width=2
+                ),
+                text=[str(G.nodes[n]["label"])[:20] + "..." for n in G.nodes()]
+            )
 
-st.plotly_chart(fig, use_container_width=True)
+            fig = go.Figure(data=[edge_trace, node_trace],
+                            layout=go.Layout(
+                                title="<br>기술 유사도 네트워크",
+                                titlefont_size=16,
+                                showlegend=False,
+                                hovermode="closest",
+                                margin=dict(b=20, l=5, r=5, t=40),
+                                xaxis=dict(showgrid=False, zeroline=False),
+                                yaxis=dict(showgrid=False, zeroline=False)
+                            ))
 
-st.markdown("---")
-st.info("기술 간 유사도가 높은 경우 더 많은 연결선이 보입니다. 유사도 임계값을 조정해보세요!")
+            st.plotly_chart(fig, use_container_width=True)
