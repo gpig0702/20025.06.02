@@ -21,7 +21,7 @@ except:
     st.error("❌ CSV 파일을 불러오는 데 실패했습니다. URL 경로를 확인해주세요.")
     st.stop()
 
-# 사용자에게 설명 컬럼 선택
+# 사용자에게 설명 컬럼 선택하도록
 text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
 
 # TF-IDF 벡터화
@@ -36,18 +36,12 @@ threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.
 G = nx.Graph()
 
 for i in range(len(df)):
-    label_text = str(df.iloc[i][text_col])
-    short_label = label_text[:25] + "..." if len(label_text) > 25 else label_text
-    G.add_node(i, label=short_label)
+    G.add_node(i, label=df.iloc[i][text_col][:25] + "...")
 
 for i in range(len(df)):
     for j in range(i + 1, len(df)):
         if similarity_matrix[i, j] > threshold:
             G.add_edge(i, j, weight=similarity_matrix[i, j])
-
-if len(G.edges) == 0:
-    st.warning("⚠️ 현재 유사도 임계값에서는 연결된 기술이 없습니다. 임계값을 낮춰보세요.")
-    st.stop()
 
 # 위치 계산
 pos = nx.spring_layout(G, seed=42)
@@ -95,7 +89,7 @@ node_trace = go.Scatter(
         size=12,
         colorbar=dict(
             thickness=15,
-            title='연결된 기술 수',  # ← 여기만 문자열로 고침!
+            title=dict(text='연결된 기술 수'),  # ← 여기 수정
             xanchor='left',
             titleside='right'
         )
