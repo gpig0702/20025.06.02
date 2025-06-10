@@ -10,7 +10,7 @@ st.set_page_config(page_title="나노융합기술 유사도 분석", layout="wid
 st.title("🔬 나노융합기술 100선 - 유사도 기반 네트워크 분석")
 st.markdown("기술 설명 텍스트를 기반으로 기술 간의 연관성과 클러스터를 시각화합니다.")
 
-# 👉 변경된 파일명 반영된 GitHub raw URL
+# 👉 GitHub의 raw CSV 파일 경로 (파일명 변경 반영)
 csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
 
 # CSV 불러오기
@@ -24,14 +24,14 @@ except:
 # 사용자에게 설명 컬럼 선택하도록
 text_col = st.selectbox("기술 설명이 포함된 컬럼을 선택하세요", df.columns)
 
-# TF-IDF 기반 벡터화
+# TF-IDF 벡터화
 tfidf = TfidfVectorizer(stop_words='english')
 tfidf_matrix = tfidf.fit_transform(df[text_col].fillna(""))
 
-# 코사인 유사도 행렬
+# 코사인 유사도 계산
 similarity_matrix = cosine_similarity(tfidf_matrix)
 
-# 유사도 기반 네트워크 생성
+# 네트워크 생성
 threshold = st.slider("유사도 임계값 (간선 생성 기준)", 0.1, 1.0, 0.3, 0.05)
 G = nx.Graph()
 
@@ -46,7 +46,7 @@ for i in range(len(df)):
 # 위치 계산
 pos = nx.spring_layout(G, seed=42)
 
-# Plotly 시각화 구성
+# Edge 좌표
 edge_x = []
 edge_y = []
 for edge in G.edges():
@@ -62,14 +62,22 @@ edge_trace = go.Scatter(
     mode='lines'
 )
 
+# Node 좌표 및 연결 수 계산
 node_x = []
 node_y = []
 labels = []
+node_degrees = []
+
 for node in G.nodes():
     x, y = pos[node]
     node_x.append(x)
     node_y.append(y)
     labels.append(G.nodes[node]['label'])
+    try:
+        degree = len(list(G.neighbors(node)))
+    except:
+        degree = 0
+    node_degrees.append(degree)
 
 node_trace = go.Scatter(
     x=node_x, y=node_y,
@@ -80,7 +88,7 @@ node_trace = go.Scatter(
     marker=dict(
         showscale=True,
         colorscale='YlGnBu',
-        color=[len(list(G.neighbors(n))) for n in G.nodes()],
+        color=node_degrees,  # 연결 수로 색상 설정
         size=12,
         colorbar=dict(
             thickness=15,
@@ -91,6 +99,7 @@ node_trace = go.Scatter(
     )
 )
 
+# 그래프 시각화
 fig = go.Figure(data=[edge_trace, node_trace],
                 layout=go.Layout(
                     title='기술 간 유사도 네트워크',
