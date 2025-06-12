@@ -1,102 +1,116 @@
 import streamlit as st
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="나노융합기술 유사도 네트워크", layout="wide")
-st.title("🔬 나노융합기술 100선 – 유사도 네트워크 시각화")
+# Streamlit 제목
+st.title("기술 유사도 기반 네트워크 시각화")
 
-# ✅ GitHub Raw URL 정확하게 반영
-csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
+# CSV 파일 업로드
+uploaded_file = st.file_uploader("📁 CSV 파일을 업로드하세요", type=["csv"])
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file, encoding='utf-8')
+        st.success("✅ CSV 파일을 성공적으로 불러왔습니다.")
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv(uploaded_file, encoding='cp949')  # 한글 인코딩 대비
+            st.success("✅ CSV 파일을 성공적으로 불러왔습니다.")
+        except Exception as e:
+            st.error(f"❌ 파일을 읽는 중 오류가 발생했습니다: {e}")
+            st.stop()
+    
+    # 유사도 임계값 슬라이더
+    threshold = st.slider("유사도 임계값 (0.0 ~ 1.0)", 0.0, 1.0, 0.05, 0.01)
 
-try:
-    df = pd.read_csv(csv_url, encoding="utf-8")
-    st.success("✅ CSV 파일을 성공적으로 불러왔습니다.")
-except Exception as e:
-    st.error(f"❌ CSV 불러오기 실패: {e}")
-    st.stop()
+    # 기술 설명 포함 여부 선택
+    기술선택 = st.selectbox("기술 설명이 포함된 열을 선택하세요", df.columns)
 
-# 사용자에게 컬럼 선택 기능 제공
-text_col = st.selectbox("기술 설명이 포함된 열을 선택하세요", df.columns)
+    # 유사도가 포함된 열 필터링 (0~1 값 가진 열)
+    유사도_열들 = [col for col in df.columns if df[col].dtype in ['float64', 'int64'] and df[col].max() <= 1.0 and df[col].min() >= 0.0]
 
-threshold = st.slider(
-    "유사도 임계값 (0.0 ~ 1.0)",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.3,
-    step=0.05
-)
+    if not 유사도_열들:
+        st.warning("⚠️ 유사도 수치가 포함된 열이 없습니다.")
+        st.stop()
 
-# 벡터화와 유사도 계산
-texts = df[text_col].fillna("").astype(str).tolist()
-vectorizer = TfidfVectorizer()
-try:
-    tfidf_matrix = vectorizer.fit_transform(texts)
-except Exception as e:
-    st.error(f"TF-IDF 처리 실패: {e}")
-    st.stop()
+    # 유사도 열 선택
+    유사도열 = st.selectbox("유사도 점수가 포함된 열을 선택하세요", 유사도_열들)
 
-similarity_matrix = cosine_similarity(tfidf_matrix)
+    # 그래프 생성
+    G = nx.Graph()
 
-# 네트워크 생성
-G = nx.Graph()
-for i, txt in enumerate(texts):
-    G.add_node(i, label=txt[:30] + "...")
+    # 노드 추가
+    for 기술 in df[기술선택].unique():
+        G.add_node(기술)
 
-for i in range(len(texts)):
-    for j in range(i + 1, len(texts)):
-        if similarity_matrix[i][j] >= threshold:
-            G.add_edge(i, j, weight=float(similarity_matrix[i][j]))
+    # 엣지 추가 (유사도 조건 만족하는 경우만)
+    for i, row in df.iterrows():
+        source = row[기술선택]
+        for j, row2 in df.iterrows():
+            target = row2[기술선택]
+            if source != target:
+                similarity = row2[유사도열]
+                if similarity >= threshold:
+                    G.add_edge(source, target, weight=similarity)
 
-if G.number_of_nodes() == 0:
-    st.warning("데이터가 존재하지 않습니다. 컬럼과 CSV 내용을 확인하세요.")
-    st.stop()
-if G.number_of_edges() == 0:
-    st.warning("간선이 없습니다. 임계값을 낮춰보세요.")
-    st.stop()
+    if len(G.nodes) == 0 or len(G.edges) == 0:
+        st.warning("⚠️ 조건에 맞는 네트워크가 없습니다. 임계값을 낮춰보세요.")
+        st.stop()
 
-# 레이아웃 계산
-pos = nx.spring_layout(G, seed=42)
+    # 노드 위치 설정
+    pos = nx.spring_layout(G, seed=42)
 
-node_x, node_y, node_text, node_degrees = [], [], [], []
-for n in G.nodes():
-    x, y = pos[n]
-    node_x.append(x); node_y.append(y)
-    node_text.append(G.nodes[n]["label"])
-    node_degrees.append(len(list(G.neighbors(n))))
+    # 엣지 위치
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
 
-edge_x, edge_y = [], []
-for e in G.edges():
-    x0, y0 = pos[e[0]]
-    x1, y1 = pos[e[1]]
-    edge_x += [x0, x1, None]
-    edge_y += [y0, y1, None]
-
-edge_trace = go.Scatter(
-    x=edge_x, y=edge_y, mode="lines",
-    line=dict(width=0.5, color="#888"), hoverinfo="none"
-)
-
-node_trace = go.Scatter(
-    x=node_x, y=node_y, mode="markers+text",
-    text=node_text, textposition="top center", hoverinfo="text",
-    marker=dict(
-        showscale=True, colorscale="YlGnBu",
-        reversescale=True, color=node_degrees,
-        size=10, line_width=2,
-        colorbar=dict(title="연결 수", thickness=15, xanchor="left")
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines'
     )
-)
 
-fig = go.Figure(data=[edge_trace, node_trace],
-                layout=go.Layout(
-                    title="기술 유사도 기반 네트워크",
-                    titlefont_size=20, showlegend=False,
-                    hovermode="closest",
-                    margin=dict(b=20, l=5, r=5, t=40),
-                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-                ))
-st.plotly_chart(fig, use_container_width=True)
+    # 노드 위치 및 텍스트
+    node_x = []
+    node_y = []
+    node_text = []
+
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=node_text,
+        textposition="top center",
+        hoverinfo='text',
+        marker=dict(
+            showscale=False,
+            color='#00BFFF',
+            size=20,
+            line_width=2
+        )
+    )
+
+    # 레이아웃 및 그래프 그리기
+    fig = go.Figure(data=[edge_trace, node_trace],
+        layout=go.Layout(
+            title=dict(text="기술 유사도 기반 네트워크", font=dict(size=20)),
+            showlegend=False,
+            hovermode="closest",
+            margin=dict(b=20, l=5, r=5, t=40),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
