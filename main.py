@@ -38,10 +38,10 @@ except Exception as e:
 
 similarity_matrix = cosine_similarity(tfidf_matrix)
 
-# ✅ 네트워크 생성
+# ✅ 네트워크 생성 (노드 라벨을 8자로 제한)
 G = nx.Graph()
 for i, txt in enumerate(texts):
-    G.add_node(i, label=txt[:20] + "...", full_text=txt)
+    G.add_node(i, label=txt[:8] + "...", full_text=txt)
 
 for i in range(len(texts)):
     for j in range(i + 1, len(texts)):
@@ -57,7 +57,7 @@ if G.number_of_edges() == 0:
 
 # ✅ 좌표 및 시각화 데이터 생성
 pos = nx.spring_layout(G, seed=42)
-node_x, node_y, hover_texts, short_labels, node_degrees, node_colors = [], [], [], [], [], []
+node_x, node_y, hover_texts, short_labels, node_sizes, node_colors = [], [], [], [], [], []
 
 highlighted_nodes = []
 
@@ -70,15 +70,15 @@ for n in G.nodes():
     node_y.append(y)
     hover_texts.append(full_text)
     short_labels.append(label)
-    degree = len(list(G.neighbors(n)))
-    node_degrees.append(degree)
 
-    # 검색 결과 강조 색상 적용
     if search_query and search_query.lower() in full_text.lower():
+        # ✅ 검색 결과는 강조
         node_colors.append("red")
+        node_sizes.append(20)
         highlighted_nodes.append((n, full_text))
     else:
-        node_colors.append(degree)  # degree 기반 색상
+        node_colors.append("#8dbbf2")  # 기본 색상
+        node_sizes.append(8)
 
 # ✅ 엣지 좌표
 edge_x, edge_y = [], []
@@ -91,21 +91,17 @@ for e in G.edges():
 # ✅ 그래프 시각화
 edge_trace = go.Scatter(
     x=edge_x, y=edge_y, mode="lines",
-    line=dict(width=0.5, color="#888"), hoverinfo="none"
+    line=dict(width=0.5, color="#ccc"), hoverinfo="none"
 )
 
 node_trace = go.Scatter(
     x=node_x, y=node_y, mode="markers+text",
-    text=short_labels, textposition="top center", hoverinfo="text",
-    hovertext=hover_texts,
+    text=short_labels, textposition="top center",
+    hovertext=hover_texts, hoverinfo="text",
     marker=dict(
-        showscale=True,
-        colorscale="YlGnBu",
-        reversescale=True,
         color=node_colors,
-        size=10,
-        line_width=2,
-        colorbar=dict(title="연결 수", thickness=15, xanchor="left")
+        size=node_sizes,
+        line=dict(width=1, color="black")
     )
 )
 
@@ -123,7 +119,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 # ✅ 보조 분석 - 검색 결과 표로 표시
 if search_query:
-    st.subheader("🔍 검색 결과")
+    st.subheader("🔍 검색 결과 목록")
     if highlighted_nodes:
         matched_df = pd.DataFrame(highlighted_nodes, columns=["Index", "기술 설명"])
         st.dataframe(matched_df.set_index("Index"))
