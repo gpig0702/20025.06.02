@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="나노융합기술 유사도 네트워크", layout="wide")
 st.title("🔬 나노융합기술 100선 – 유사도 네트워크 시각화")
 
+# ✅ GitHub CSV URL
 csv_url = "https://raw.githubusercontent.com/gpig0702/20025.06.02/main/kimm_nano_100.csv"
 
 try:
@@ -17,18 +18,16 @@ except Exception as e:
     st.error(f"❌ CSV 불러오기 실패: {e}")
     st.stop()
 
+# ✅ 기술 설명 컬럼 선택
 text_col = st.selectbox("기술 설명이 포함된 열을 선택하세요", df.columns)
 
-threshold = st.slider(
-    "유사도 임계값 (0.0 ~ 1.0)",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.3,
-    step=0.05
-)
+# ✅ 유사도 임계값 슬라이더
+threshold = st.slider("유사도 임계값 (0.0 ~ 1.0)", 0.0, 1.0, 0.3, 0.05)
 
-search_keyword = st.text_input("🔍 특정 키워드로 관련 기술만 필터링 (선택사항)", "").strip()
+# ✅ 검색어 입력
+search_query = st.text_input("🔍 기술 검색어를 입력하세요 (예: 센서)", "").strip()
 
+# ✅ TF-IDF 벡터화
 texts = df[text_col].fillna("").astype(str).tolist()
 vectorizer = TfidfVectorizer()
 try:
@@ -39,9 +38,10 @@ except Exception as e:
 
 similarity_matrix = cosine_similarity(tfidf_matrix)
 
+# ✅ 네트워크 생성
 G = nx.Graph()
 for i, txt in enumerate(texts):
-    G.add_node(i, label=txt)
+    G.add_node(i, label=txt[:20] + "...", full_text=txt)
 
 for i in range(len(texts)):
     for j in range(i + 1, len(texts)):
@@ -55,32 +55,32 @@ if G.number_of_edges() == 0:
     st.warning("간선이 없습니다. 임계값을 낮춰보세요.")
     st.stop()
 
-# 🔍 필터링: 검색 키워드가 있을 경우 해당 노드와 연결된 노드만 표시
-if search_keyword:
-    matched_nodes = [n for n, d in G.nodes(data=True) if search_keyword in d["label"]]
-    if matched_nodes:
-        sub_nodes = set()
-        for node in matched_nodes:
-            sub_nodes.add(node)
-            sub_nodes.update(G.neighbors(node))
-        G = G.subgraph(sub_nodes).copy()
-    else:
-        st.warning("검색된 키워드에 해당하는 기술이 없습니다.")
-        st.stop()
-
-# 레이아웃
+# ✅ 좌표 및 시각화 데이터 생성
 pos = nx.spring_layout(G, seed=42)
+node_x, node_y, hover_texts, short_labels, node_degrees, node_colors = [], [], [], [], [], []
 
-node_x, node_y, node_text, node_hover, node_degrees = [], [], [], [], []
+highlighted_nodes = []
+
 for n in G.nodes():
     x, y = pos[n]
+    full_text = G.nodes[n]["full_text"]
     label = G.nodes[n]["label"]
-    short_label = label[:15] + "..." if len(label) > 15 else label
-    node_x.append(x); node_y.append(y)
-    node_text.append(short_label)
-    node_hover.append(label)
-    node_degrees.append(len(list(G.neighbors(n))))
 
+    node_x.append(x)
+    node_y.append(y)
+    hover_texts.append(full_text)
+    short_labels.append(label)
+    degree = len(list(G.neighbors(n)))
+    node_degrees.append(degree)
+
+    # 검색 결과 강조 색상 적용
+    if search_query and search_query.lower() in full_text.lower():
+        node_colors.append("red")
+        highlighted_nodes.append((n, full_text))
+    else:
+        node_colors.append(degree)  # degree 기반 색상
+
+# ✅ 엣지 좌표
 edge_x, edge_y = [], []
 for e in G.edges():
     x0, y0 = pos[e[0]]
@@ -88,6 +88,7 @@ for e in G.edges():
     edge_x += [x0, x1, None]
     edge_y += [y0, y1, None]
 
+# ✅ 그래프 시각화
 edge_trace = go.Scatter(
     x=edge_x, y=edge_y, mode="lines",
     line=dict(width=0.5, color="#888"), hoverinfo="none"
@@ -95,44 +96,36 @@ edge_trace = go.Scatter(
 
 node_trace = go.Scatter(
     x=node_x, y=node_y, mode="markers+text",
-    text=node_text, hovertext=node_hover, textposition="top center",
-    hoverinfo="text",
+    text=short_labels, textposition="top center", hoverinfo="text",
+    hovertext=hover_texts,
     marker=dict(
-        showscale=True, colorscale="YlGnBu", reversescale=True,
-        color=node_degrees, size=10, line_width=2,
+        showscale=True,
+        colorscale="YlGnBu",
+        reversescale=True,
+        color=node_colors,
+        size=10,
+        line_width=2,
         colorbar=dict(title="연결 수", thickness=15, xanchor="left")
     )
 )
 
 fig = go.Figure(data=[edge_trace, node_trace],
                 layout=go.Layout(
-                    title="기술 유사도 기반 네트워크",
-                    titlefont_size=20, showlegend=False,
+                    title=dict(text="기술 유사도 기반 네트워크", font=dict(size=20)),
+                    showlegend=False,
                     hovermode="closest",
                     margin=dict(b=20, l=5, r=5, t=40),
                     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
                 ))
+
 st.plotly_chart(fig, use_container_width=True)
 
-# 📊 유사도 상위 기술쌍 출력
-st.subheader("📋 유사도 상위 기술쌍 (Top 20)")
-top_n = 20
-pairs = []
-for i in range(len(texts)):
-    for j in range(i + 1, len(texts)):
-        score = similarity_matrix[i][j]
-        if score >= threshold:
-            pairs.append((i, j, score))
-
-top_pairs = sorted(pairs, key=lambda x: x[2], reverse=True)[:top_n]
-
-top_df = pd.DataFrame([
-    {
-        "기술 A": texts[i],
-        "기술 B": texts[j],
-        "유사도": round(score, 3)
-    }
-    for i, j, score in top_pairs
-])
-st.dataframe(top_df, use_container_width=True)
+# ✅ 보조 분석 - 검색 결과 표로 표시
+if search_query:
+    st.subheader("🔍 검색 결과")
+    if highlighted_nodes:
+        matched_df = pd.DataFrame(highlighted_nodes, columns=["Index", "기술 설명"])
+        st.dataframe(matched_df.set_index("Index"))
+    else:
+        st.info("검색 결과가 없습니다.")
