@@ -42,7 +42,7 @@ similarity_matrix = cosine_similarity(tfidf_matrix)
 # ✅ 네트워크 생성
 G = nx.Graph()
 for i, txt in enumerate(texts):
-    G.add_node(i, label=txt[:8] + "...", full_text=txt)
+    G.add_node(i, label=txt[:6] + "…", full_text=txt)  # 라벨 더 짧게
 
 for i in range(len(texts)):
     for j in range(i + 1, len(texts)):
@@ -87,6 +87,7 @@ for e in G.edges():
     edge_x += [x0, x1, None]
     edge_y += [y0, y1, None]
 
+# ✅ 시각화 (글자 크기 조절 포함)
 edge_trace = go.Scatter(
     x=edge_x, y=edge_y, mode="lines",
     line=dict(width=0.5, color="#ccc"), hoverinfo="none"
@@ -96,6 +97,7 @@ node_trace = go.Scatter(
     x=node_x, y=node_y, mode="markers+text",
     text=short_labels, textposition="top center",
     hovertext=hover_texts, hoverinfo="text",
+    textfont=dict(size=9),  # ✅ 글자 크기 줄임
     marker=dict(
         color=node_colors,
         size=node_sizes,
@@ -127,16 +129,13 @@ if search_query:
 # ✅ [신규 기능] 유사도 상위 기술쌍 + 공통 키워드
 st.subheader("📊 유사도 상위 기술 쌍 + 유사 키워드")
 
-# 상위 유사 기술쌍 추출
 similarities = []
 for i in range(len(texts)):
     for j in range(i + 1, len(texts)):
         similarities.append((i, j, similarity_matrix[i, j]))
 
-# 상위 10개 쌍 정렬
 top_similar_pairs = sorted(similarities, key=lambda x: x[2], reverse=True)[:10]
 
-# 공통 키워드 추출 함수
 feature_names = vectorizer.get_feature_names_out()
 
 def get_top_shared_keywords(i, j, top_n=5):
@@ -146,7 +145,6 @@ def get_top_shared_keywords(i, j, top_n=5):
     shared_keywords_idx = np.argsort(avg_scores)[::-1][:top_n]
     return [feature_names[k] for k in shared_keywords_idx]
 
-# 표 출력
 for idx1, idx2, sim in top_similar_pairs:
     keywords = get_top_shared_keywords(idx1, idx2)
     st.markdown(f"""
