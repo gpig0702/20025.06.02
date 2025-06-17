@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
@@ -38,7 +39,7 @@ except Exception as e:
 
 similarity_matrix = cosine_similarity(tfidf_matrix)
 
-# ✅ 네트워크 생성 (노드 라벨을 8자로 제한)
+# ✅ 네트워크 생성
 G = nx.Graph()
 for i, txt in enumerate(texts):
     G.add_node(i, label=txt[:8] + "...", full_text=txt)
@@ -49,7 +50,7 @@ for i in range(len(texts)):
             G.add_edge(i, j, weight=float(similarity_matrix[i][j]))
 
 if G.number_of_nodes() == 0:
-    st.warning("데이터가 존재하지 않습니다. 컬럼과 CSV 내용을 확인하세요.")
+    st.warning("데이터가 존재하지 않습니다.")
     st.stop()
 if G.number_of_edges() == 0:
     st.warning("간선이 없습니다. 임계값을 낮춰보세요.")
@@ -72,15 +73,13 @@ for n in G.nodes():
     short_labels.append(label)
 
     if search_query and search_query.lower() in full_text.lower():
-        # ✅ 검색 결과는 강조
         node_colors.append("red")
         node_sizes.append(20)
         highlighted_nodes.append((n, full_text))
     else:
-        node_colors.append("#8dbbf2")  # 기본 색상
+        node_colors.append("#8dbbf2")
         node_sizes.append(8)
 
-# ✅ 엣지 좌표
 edge_x, edge_y = [], []
 for e in G.edges():
     x0, y0 = pos[e[0]]
@@ -88,7 +87,6 @@ for e in G.edges():
     edge_x += [x0, x1, None]
     edge_y += [y0, y1, None]
 
-# ✅ 그래프 시각화
 edge_trace = go.Scatter(
     x=edge_x, y=edge_y, mode="lines",
     line=dict(width=0.5, color="#ccc"), hoverinfo="none"
@@ -117,7 +115,7 @@ fig = go.Figure(data=[edge_trace, node_trace],
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ✅ 보조 분석 - 검색 결과 표로 표시
+# ✅ 보조 분석 - 검색 결과
 if search_query:
     st.subheader("🔍 검색 결과 목록")
     if highlighted_nodes:
@@ -125,3 +123,36 @@ if search_query:
         st.dataframe(matched_df.set_index("Index"))
     else:
         st.info("검색 결과가 없습니다.")
+
+# ✅ [신규 기능] 유사도 상위 기술쌍 + 공통 키워드
+st.subheader("📊 유사도 상위 기술 쌍 + 유사 키워드")
+
+# 상위 유사 기술쌍 추출
+similarities = []
+for i in range(len(texts)):
+    for j in range(i + 1, len(texts)):
+        similarities.append((i, j, similarity_matrix[i, j]))
+
+# 상위 10개 쌍 정렬
+top_similar_pairs = sorted(similarities, key=lambda x: x[2], reverse=True)[:10]
+
+# 공통 키워드 추출 함수
+feature_names = vectorizer.get_feature_names_out()
+
+def get_top_shared_keywords(i, j, top_n=5):
+    vec_i = tfidf_matrix[i].toarray().flatten()
+    vec_j = tfidf_matrix[j].toarray().flatten()
+    avg_scores = (vec_i + vec_j) / 2
+    shared_keywords_idx = np.argsort(avg_scores)[::-1][:top_n]
+    return [feature_names[k] for k in shared_keywords_idx]
+
+# 표 출력
+for idx1, idx2, sim in top_similar_pairs:
+    keywords = get_top_shared_keywords(idx1, idx2)
+    st.markdown(f"""
+    ✅ **기술 A:** {df[text_col][idx1]}  
+    ✅ **기술 B:** {df[text_col][idx2]}  
+    📌 **유사도:** {sim:.3f}  
+    🔑 **공통 키워드:** _{', '.join(keywords)}_  
+    ---
+    """)
